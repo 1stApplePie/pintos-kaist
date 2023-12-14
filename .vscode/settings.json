@@ -1,0 +1,29 @@
+{
+    "files.associations": {
+        "vm.h": "c",
+        "stdio.h": "c",
+        "random.h": "c",
+        "list.h": "c",
+        "stddef.h": "c",
+        "debug.h": "c",
+        "flags.h": "c",
+        "vaddr.h": "c",
+        "string.h": "c",
+        "intrinsic.h": "c",
+        "thread.h": "c",
+        "synch.h": "c",
+        "interrupt.h": "c",
+        "intr-stubs.h": "c",
+        "palloc.h": "c",
+        "timer.h": "c",
+        "loader.h": "c",
+        "syscall.h": "c",
+        "syscall-nr.h": "c",
+        "file.h": "c",
+        "filesys.h": "c",
+        "inode.h": "c",
+        "process.h": "c",
+        "init.h": "c",
+        "input.h": "c"
+    }
+}

@@ -5,6 +5,7 @@
 #include <list.h>
 #include <stdint.h>
 #include "threads/interrupt.h"
+#include "threads/synch.h"
 #ifdef VM
 #include "vm/vm.h"
 #endif
@@ -27,6 +28,12 @@ typedef int tid_t;
 #define PRI_MIN 0                       /* Lowest priority. */
 #define PRI_DEFAULT 31                  /* Default priority. */
 #define PRI_MAX 63                      /* Highest priority. */
+
+#define FDT_PAGES 2
+#define FDT_COUNT_LIMIT 128
+
+#define FDT_PAGES 2
+#define FDT_CNT_LIMIT 128
 
 /* A kernel thread or user process.
  *
@@ -91,7 +98,17 @@ struct thread {
 	enum thread_status status;          /* Thread state. */
 	char name[16];                      /* Name (for debugging purposes). */
 	int priority;                       /* Priority. */
+	int original_priority;
 
+	struct lock* waiting_lock;	/* 기다리는 lock */
+
+	struct list holding_locks;  /* 잡고있는 lock */
+
+	int nice;
+
+	int recent_cpu;
+
+	int64_t for_ticks;
 	/* Shared between thread.c and synch.c. */
 	struct list_elem elem;              /* List element. */
 
@@ -107,6 +124,20 @@ struct thread {
 	/* Owned by thread.c. */
 	struct intr_frame tf;               /* Information for switching */
 	unsigned magic;                     /* Detects stack overflow. */
+
+	int exit_status;
+	struct file* running;
+	struct file** fdt;
+	int next_fd;
+
+	struct list child_list;
+	struct list_elem child_elem;
+
+	struct intr_frame parent_if;
+
+	struct semaphore load_sema;
+	struct semaphore wait_sema;
+	struct semaphore exit_sema;
 };
 
 /* If false (default), use round-robin scheduler.
@@ -122,6 +153,9 @@ void thread_print_stats (void);
 
 typedef void thread_func (void *aux);
 tid_t thread_create (const char *name, int priority, thread_func *, void *);
+
+void thread_ticks_end(void);
+void blocking_for_ticks(int64_t ticks);
 
 void thread_block (void);
 void thread_unblock (struct thread *);
@@ -140,6 +174,15 @@ int thread_get_nice (void);
 void thread_set_nice (int);
 int thread_get_recent_cpu (void);
 int thread_get_load_avg (void);
+
+void priority_calculator (struct thread *t);
+void recent_cpu_calculator (struct thread *t);
+void load_avg_calculator (void);
+void recent_cpu_increment (void);
+void recalc_all (void);
+
+void priority_calculator(struct thread* t);
+int decay(void);
 
 void do_iret (struct intr_frame *tf);
 

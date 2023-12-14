@@ -20,8 +20,10 @@ void sema_self_test (void);
 struct lock {
 	struct thread *holder;      /* Thread holding lock (for debugging). */
 	struct semaphore semaphore; /* Binary semaphore controlling access. */
+	struct list_elem elem;
 };
-
+void priority_donate(struct thread* holder, struct thread* acquire);
+void refresh_priority(struct thread* holder);
 void lock_init (struct lock *);
 void lock_acquire (struct lock *);
 bool lock_try_acquire (struct lock *);
