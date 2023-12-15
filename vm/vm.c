@@ -32,6 +32,23 @@ page_get_type (struct page *page) {
 	}
 }
 
+/* Returns a hash value for page p. */
+unsigned
+page_hash (const struct hash_elem *p_, void *aux UNUSED) {
+  const struct page *p = hash_entry (p_, struct page, hash_elem);
+  return hash_bytes (&p->va, sizeof p->va);
+}
+
+/* Returns true if page a precedes page b. */
+bool
+page_less (const struct hash_elem *a_,
+           const struct hash_elem *b_, void *aux UNUSED) {
+  const struct page *a = hash_entry (a_, struct page, hash_elem);
+  const struct page *b = hash_entry (b_, struct page, hash_elem);
+
+  return a->va < b->va;
+}
+
 /* Helpers */
 static struct frame *vm_get_victim (void);
 static bool vm_do_claim_page (struct page *page);
@@ -60,23 +77,25 @@ err:
 	return false;
 }
 
+/* Returns the page containing the given virtual address, or a null pointer if no such page exists. */
 /* Find VA from spt and return page. On error, return NULL. */
 struct page *
 spt_find_page (struct supplemental_page_table *spt UNUSED, void *va UNUSED) {
 	struct page *page = NULL;
 	/* TODO: Fill this function. */
+	struct hash_elem *e;
 
-	return page;
+	page->va = va;
+	e = hash_find (&spt, &page->hash_elem);
+	return e != NULL ? hash_entry (e, struct page, hash_elem) : NULL;
 }
 
 /* Insert PAGE into spt with validation. */
 bool
 spt_insert_page (struct supplemental_page_table *spt UNUSED,
 		struct page *page UNUSED) {
-	int succ = false;
 	/* TODO: Fill this function. */
-
-	return succ;
+	return hash_insert (&spt, &page->hash_elem) ? true : false;
 }
 
 void
@@ -171,15 +190,26 @@ vm_do_claim_page (struct page *page) {
 	return swap_in (page, frame->kva);
 }
 
-/* Initialize new supplemental page table */
+/* Initialize new supplemental page table 
+Supplements the page table with additional information about each page.
+
+Why not just change page table directly? Limitations on page table format.
+
+Two purposes:
+1. On page fault, kernel looks up virtual page in supplemental page table to
+find what data should be there.
+2. When a process terminates, kernel determines what resources to free.
+*/
 void
 supplemental_page_table_init (struct supplemental_page_table *spt UNUSED) {
+	hash_init(&spt->spt_hash_table, page_hash, page_less, NULL);
 }
 
 /* Copy supplemental page table from src to dst */
 bool
 supplemental_page_table_copy (struct supplemental_page_table *dst UNUSED,
 		struct supplemental_page_table *src UNUSED) {
+	memcpy(dst, src, sizeof(struct supplemental_page_table));
 }
 
 /* Free the resource hold by the supplemental page table */
