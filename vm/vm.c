@@ -1,6 +1,7 @@
 /* vm.c: Generic interface for virtual memory objects. */
 
 #include "threads/malloc.h"
+#include "threads/vaddr.h"
 #include "vm/vm.h"
 #include "vm/inspect.h"
 
@@ -35,7 +36,7 @@ page_get_type (struct page *page) {
 /* Returns a hash value for page p. */
 unsigned
 page_hash (const struct hash_elem *p_, void *aux UNUSED) {
-  const struct page *p = hash_entry (p_, struct page, hash_elem);
+  const struct page *p = hash_entry (p_, struct page, page_elem);
   return hash_bytes (&p->va, sizeof p->va);
 }
 
@@ -43,8 +44,8 @@ page_hash (const struct hash_elem *p_, void *aux UNUSED) {
 bool
 page_less (const struct hash_elem *a_,
            const struct hash_elem *b_, void *aux UNUSED) {
-  const struct page *a = hash_entry (a_, struct page, hash_elem);
-  const struct page *b = hash_entry (b_, struct page, hash_elem);
+  const struct page *a = hash_entry (a_, struct page, page_elem);
+  const struct page *b = hash_entry (b_, struct page, page_elem);
 
   return a->va < b->va;
 }
@@ -70,9 +71,28 @@ vm_alloc_page_with_initializer (enum vm_type type, void *upage, bool writable,
 		/* TODO: Create the page, fetch the initialier according to the VM type,
 		 * TODO: and then create "uninit" page struct by calling uninit_new. You
 		 * TODO: should modify the field after calling the uninit_new. */
+		struct page *new_page = (struct page *)malloc(sizeof(struct page));;
+		if (new_page == NULL)
+            goto err;
+
+		void *va = pg_round_down(upage);
+
+		switch (VM_TYPE(type)) {
+            case VM_ANON:
+                uninit_new(new_page, va, init, type, aux, anon_initializer);
+                break;
+            case VM_FILE:
+                uninit_new(new_page, va, init, type, aux, file_backed_initializer);
+                break;
+            default:
+                NOT_REACHED();
+                break;
+        }
 
 		/* TODO: Insert the page into the spt. */
+		hash_insert(&spt->spt_ht, &new_page->page_elem);
 	}
+	return true;
 err:
 	return false;
 }
@@ -81,13 +101,13 @@ err:
 /* Find VA from spt and return page. On error, return NULL. */
 struct page *
 spt_find_page (struct supplemental_page_table *spt UNUSED, void *va UNUSED) {
-	struct page *page = NULL;
+	struct page *page;
 	/* TODO: Fill this function. */
 	struct hash_elem *e;
 
 	page->va = va;
-	e = hash_find (&spt, &page->hash_elem);
-	return e != NULL ? hash_entry (e, struct page, hash_elem) : NULL;
+	e = hash_find (&spt->spt_ht, &page->page_elem);
+	return e != NULL ? hash_entry (e, struct page, page_elem) : NULL;
 }
 
 /* Insert PAGE into spt with validation. */
@@ -95,7 +115,7 @@ bool
 spt_insert_page (struct supplemental_page_table *spt UNUSED,
 		struct page *page UNUSED) {
 	/* TODO: Fill this function. */
-	return hash_insert (&spt, &page->hash_elem) ? true : false;
+	return hash_insert (&spt, &page->page_elem) ? true : false;
 }
 
 void
@@ -202,7 +222,7 @@ find what data should be there.
 */
 void
 supplemental_page_table_init (struct supplemental_page_table *spt UNUSED) {
-	hash_init(&spt->spt_hash_table, page_hash, page_less, NULL);
+	hash_init(&spt->spt_ht, page_hash, page_less, NULL);
 }
 
 /* Copy supplemental page table from src to dst */

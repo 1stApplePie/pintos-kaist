@@ -48,7 +48,7 @@ struct page {
 	struct frame *frame;   /* Back reference for frame */
 
 	/* Your implementation */
-	struct hash_elem hash_elem; /* Hash table element. */
+	struct hash_elem page_elem; /* Hash table element. */
 
 	/* Per-type data are binded into the union.
 	 * Each function automatically detects the current union */
@@ -88,7 +88,7 @@ struct page_operations {
  * We don't want to force you to obey any specific design for this struct.
  * All designs up to you for this. */
 struct supplemental_page_table {
-	struct hash spt_hash_table;
+	struct hash spt_ht;
 };
 
 #include "threads/thread.h"
