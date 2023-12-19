@@ -477,18 +477,19 @@ load (const char *file_name, struct intr_frame *if_) {
 	/* Read and verify executable header. */
 	if (file_read (file, &ehdr, sizeof ehdr) != sizeof ehdr
 			|| memcmp (ehdr.e_ident, "\177ELF\2\1\1", 7)
-			|| ehdr.e_type != 2
-			|| ehdr.e_machine != 0x3E // amd64
-			|| ehdr.e_version != 1
-			|| ehdr.e_phentsize != sizeof (struct Phdr)
-			|| ehdr.e_phnum > 1024) {
+			|| ehdr.e_type != 2		// ELF 파일의 타입을 나타내며, 이 값이 2(ET_EXEC)인지 확인
+			|| ehdr.e_machine != 0x3E //  ELF 파일이 실행될 아키텍처를 나타내며, 0x3E가 AMD64(64비트 x86) 아키텍처를 나타내는지 확인
+			|| ehdr.e_version != 1	// ELF 버전을 나타내며, 1인지 확인
+			|| ehdr.e_phentsize != sizeof (struct Phdr)	// Program Header의 크기를 확인하며, struct Phdr의 크기와 같은지 확인
+			|| ehdr.e_phnum > 1024	// Program Header의 개수를 확인하며, 1024 이하인지 확인
+		) {
 		printf ("load: %s: error loading executable\n", file_name);
 		goto done;
 	}
 
 	/* Read program headers. */
-	file_ofs = ehdr.e_phoff;
-	for (i = 0; i < ehdr.e_phnum; i++) {
+	file_ofs = ehdr.e_phoff;	// e_phoff는 ELF 파일에서 프로그램 헤더 테이블의 시작 위치를 나타냄
+	for (i = 0; i < ehdr.e_phnum; i++) {	// ehdr.e_phnum은 ELF 파일에 있는 프로그램 헤더의 개수
 		struct Phdr phdr;
 
 		if (file_ofs < 0 || file_ofs > file_length (file))
@@ -498,7 +499,7 @@ load (const char *file_name, struct intr_frame *if_) {
 		if (file_read (file, &phdr, sizeof phdr) != sizeof phdr)
 			goto done;
 		file_ofs += sizeof phdr;
-		switch (phdr.p_type) {
+		switch (phdr.p_type) {	// 읽어온 프로그램 헤더의 유형(p_type)에 따라 다양한 처리
 			case PT_NULL:
 			case PT_NOTE:
 			case PT_PHDR:
@@ -529,7 +530,7 @@ load (const char *file_name, struct intr_frame *if_) {
 						read_bytes = 0;
 						zero_bytes = ROUND_UP (page_offset + phdr.p_memsz, PGSIZE);
 					}
-					if (!load_segment (file, file_page, (void *) mem_page,
+					if (!load_segment (file, file_page, (void *) mem_page,	// load_segment 함수를 호출하여 세그먼트를 메모리에 로드
 								read_bytes, zero_bytes, writable))
 						goto done;
 				}
@@ -800,6 +801,23 @@ lazy_load_segment (struct page *page, void *aux) {
 	/* TODO: Load the segment from the file */
 	/* TODO: This called when the first page fault occurs on address VA. */
 	/* TODO: VA is available when calling this function. */
+	// Lazy load의 주요 특징은 필요한 시점에만 데이터를 로드하고,
+	// 그 이전까지는 디스크에서 읽어오지 않는다는 것
+	// 이를 통해 메모리 사용을 최적화할 수 있다.
+	struct file_info *file_info = (struct file_info *)aux;
+
+	// 페이지 폴트가 발생하면 해당 페이지를 디스크에서 읽어와 
+	// 메모리에 로드하고, 페이지 테이블을 업데이트하여 
+	// 가상 주소와 물리 주소 간의 매핑을 수행
+	off_t res = file_read_at (file_info->file, page->va, 
+					file_info->read_bytes, file_info->ofs);
+	memset((char *)page->va + file_info->read_bytes, 0, PGSIZE-file_info->read_bytes);
+
+	if (res != file_info->read_bytes) {
+		return false;
+	}
+
+	return true;
 }
 
 /* Loads a segment starting at offset OFS in FILE at address
@@ -831,15 +849,28 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
 		size_t page_zero_bytes = PGSIZE - page_read_bytes;
 
 		/* TODO: Set up aux to pass information to the lazy_load_segment. */
-		void *aux = NULL;
-		if (!vm_alloc_page_with_initializer (VM_ANON, upage,
-					writable, lazy_load_segment, aux))
+		struct file_info *aux  = (struct file_info *)malloc(sizeof(struct file_info));
+		if (aux == NULL) {
 			return false;
+		}
+
+		aux->file = file;
+		aux->ofs = ofs;
+		aux->read_bytes = read_bytes;
+		aux->writable = writable;
+
+		if (!vm_alloc_page_with_initializer (VM_ANON, upage,
+					writable, lazy_load_segment, aux)) {
+						free(aux);
+						return false;
+					}
+			
 
 		/* Advance. */
 		read_bytes -= page_read_bytes;
 		zero_bytes -= page_zero_bytes;
 		upage += PGSIZE;
+		ofs += page_read_bytes;
 	}
 	return true;
 }
@@ -854,7 +885,14 @@ setup_stack (struct intr_frame *if_) {
 	 * TODO: If success, set the rsp accordingly.
 	 * TODO: You should mark the page is stack. */
 	/* TODO: Your code goes here */
+	success = vm_alloc_page(VM_ANON, stack_bottom, true);
+    if (success) {
+        struct page *page = spt_find_page(&thread_current()->spt, stack_bottom);
 
-	return success;
+        if (vm_claim_page(stack_bottom))
+            if_->rsp = USER_STACK;
+    }
+
+    return success;
 }
 #endif /* VM */

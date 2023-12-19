@@ -21,6 +21,14 @@ struct exit_info {
     struct semaphore exit_sema;
 };
 
+/* project 3 */
+struct file_info {
+    struct file *file;
+    off_t ofs;
+    uint32_t read_bytes;
+    bool writable;
+};
+
 struct thread * find_child_process(tid_t);
 
 #endif /* userprog/process.h */

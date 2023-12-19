@@ -2,6 +2,7 @@
 
 #include "threads/malloc.h"
 #include "threads/vaddr.h"
+#include "threads/thread.h"
 #include "vm/vm.h"
 #include "vm/inspect.h"
 
@@ -68,10 +69,10 @@ vm_alloc_page_with_initializer (enum vm_type type, void *upage, bool writable,
 
 	/* Check wheter the upage is already occupied or not. */
 	if (spt_find_page (spt, upage) == NULL) {
-		/* TODO: Create the page, fetch the initialier according to the VM type,
-		 * TODO: and then create "uninit" page struct by calling uninit_new. You
-		 * TODO: should modify the field after calling the uninit_new. */
-		struct page *new_page = (struct page *)malloc(sizeof(struct page));;
+		/* Create the page, fetch the initialier according to the VM type,
+		 * and then create "uninit" page struct by calling uninit_new. You
+		 * should modify the field after calling the uninit_new. */
+		struct page *new_page = (struct page *)malloc(sizeof(struct page));
 		if (new_page == NULL)
             goto err;
 
@@ -89,8 +90,12 @@ vm_alloc_page_with_initializer (enum vm_type type, void *upage, bool writable,
                 break;
         }
 
-		/* TODO: Insert the page into the spt. */
-		hash_insert(&spt->spt_ht, &new_page->page_elem);
+		new_page->writable = writable;
+
+		/* Insert the page into the spt. */
+		if (!spt_insert_page(spt, new_page)) {
+			goto err;
+		}
 	}
 	return true;
 err:
@@ -100,22 +105,23 @@ err:
 /* Returns the page containing the given virtual address, or a null pointer if no such page exists. */
 /* Find VA from spt and return page. On error, return NULL. */
 struct page *
-spt_find_page (struct supplemental_page_table *spt UNUSED, void *va UNUSED) {
+spt_find_page (struct supplemental_page_table *spt, void *va) {
 	struct page *page;
-	/* TODO: Fill this function. */
+	/* Find page in supplement page table - implemented project 3 */
 	struct hash_elem *e;
 
-	page->va = va;
+	page->va =  pg_round_down(va);
 	e = hash_find (&spt->spt_ht, &page->page_elem);
 	return e != NULL ? hash_entry (e, struct page, page_elem) : NULL;
 }
 
 /* Insert PAGE into spt with validation. */
 bool
-spt_insert_page (struct supplemental_page_table *spt UNUSED,
-		struct page *page UNUSED) {
-	/* TODO: Fill this function. */
-	return hash_insert (&spt, &page->page_elem) ? true : false;
+spt_insert_page (struct supplemental_page_table *spt, struct page *page) {
+	/* Insert page in supplement page - implemented project 3 */
+	struct hash_elem *e = hash_insert (&spt->spt_ht, &page->page_elem);
+
+	return e == NULL ? true : false;
 }
 
 void
@@ -149,8 +155,21 @@ vm_evict_frame (void) {
  * space.*/
 static struct frame *
 vm_get_frame (void) {
-	struct frame *frame = NULL;
+	struct frame *frame = (struct frame *)malloc(sizeof(struct frame));
+	
 	/* TODO: Fill this function. */
+	if (frame == NULL) {
+		printf("frame malloc failed!\n");
+		exit(-1);
+	}
+
+	void *kva = palloc_get_page(PAL_USER|PAL_ZERO);
+	if (kva == NULL) {
+		kva = vm_evict_frame();
+	}
+
+	frame->kva = kva;
+	frame->page = NULL;
 
 	ASSERT (frame != NULL);
 	ASSERT (frame->page == NULL);
@@ -169,12 +188,36 @@ vm_handle_wp (struct page *page UNUSED) {
 
 /* Return true on success */
 bool
-vm_try_handle_fault (struct intr_frame *f UNUSED, void *addr UNUSED,
-		bool user UNUSED, bool write UNUSED, bool not_present UNUSED) {
-	struct supplemental_page_table *spt UNUSED = &thread_current ()->spt;
-	struct page *page = NULL;
-	/* TODO: Validate the fault */
-	/* TODO: Your code goes here */
+vm_try_handle_fault (struct intr_frame *f, void *addr, bool user, bool write, bool not_present) {
+	struct supplemental_page_table *spt = &thread_current ()->spt;
+	struct page *page = spt_find_page(spt, addr);
+
+	// Valid check
+	if (user == true && !is_user_vaddr(addr)) {
+		return false;
+	}
+	else if (!not_present) {
+		return false;
+	}
+	// spt에 없는 page이면 어떻게 조치?
+	/*
+	페이지 테이블에도 없고, Supplement Page Table에도 없다면,
+	해당 페이지는 물리 메모리에 존재하지 않는 상태. 
+	운영 체제는 보통 디스크의 Backing Store 또는 스왑 영역에서 
+	해당 페이지의 데이터를 읽어와 물리 메모리에 로드.
+	*/
+	void *stack_bottom = pg_round_down(f->rsp) - PGSIZE;
+
+	if (page == NULL) {
+		// TODO: Implement this function
+		bool succ = vm_alloc_page_with_initializer(VM_ANON, stack_bottom, true, NULL, NULL);
+
+        if (succ && vm_claim_page(addr)) {
+			f->rsp = pg_round_down(f->rsp);
+			return true;
+		}
+		return false;
+	}
 
 	return vm_do_claim_page (page);
 }
@@ -189,9 +232,10 @@ vm_dealloc_page (struct page *page) {
 
 /* Claim the page that allocate on VA. */
 bool
-vm_claim_page (void *va UNUSED) {
+vm_claim_page (void *va) {
 	struct page *page = NULL;
 	/* TODO: Fill this function */
+	page = spt_find_page(&thread_current()->spt, va);
 
 	return vm_do_claim_page (page);
 }
@@ -200,12 +244,14 @@ vm_claim_page (void *va UNUSED) {
 static bool
 vm_do_claim_page (struct page *page) {
 	struct frame *frame = vm_get_frame ();
+	struct thread *curr = thread_current();
 
 	/* Set links */
 	frame->page = page;
 	page->frame = frame;
 
-	/* TODO: Insert page table entry to map page's VA to frame's PA. */
+	/* Insert page table entry to map page's VA to frame's PA - implemented project 3 */
+	pml4_set_page(&curr->pml4, page->va, frame->kva, page->writable);
 
 	return swap_in (page, frame->kva);
 }
@@ -221,14 +267,14 @@ find what data should be there.
 2. When a process terminates, kernel determines what resources to free.
 */
 void
-supplemental_page_table_init (struct supplemental_page_table *spt UNUSED) {
+supplemental_page_table_init (struct supplemental_page_table *spt) {
 	hash_init(&spt->spt_ht, page_hash, page_less, NULL);
 }
 
 /* Copy supplemental page table from src to dst */
 bool
-supplemental_page_table_copy (struct supplemental_page_table *dst UNUSED,
-		struct supplemental_page_table *src UNUSED) {
+supplemental_page_table_copy (struct supplemental_page_table *dst,
+		struct supplemental_page_table *src) {
 	memcpy(dst, src, sizeof(struct supplemental_page_table));
 }
 
