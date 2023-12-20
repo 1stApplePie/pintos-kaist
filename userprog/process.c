@@ -56,12 +56,10 @@ process_create_initd (const char *file_name) {
 		return TID_ERROR;
 	strlcpy (fn_copy, file_name, PGSIZE);
 
-	char *n_copy[strlen(file_name)+1];
 	char *n_ptr;
-	strlcpy (n_copy, file_name, PGSIZE);
 
 	/* Create a new thread to execute FILE_NAME. */
-	exec_tid = thread_create (strtok_r(n_copy, " ", &n_ptr), PRI_DEFAULT, initd, fn_copy);
+	exec_tid = thread_create (strtok_r(file_name, " ", &n_ptr), PRI_DEFAULT, initd, fn_copy);
 	if (exec_tid == TID_ERROR)
 		palloc_free_page (fn_copy);
 
@@ -443,36 +441,28 @@ load (const char *file_name, struct intr_frame *if_) {
 
 	/* Allocate and activate page directory. */
 	t->pml4 = pml4_create ();
-	if (t->pml4 == NULL)
+	if (t->pml4 == NULL) {
 		goto done;
-	process_activate (thread_current ());
+	}
+		
+	process_activate (t);
 
 	/* Open executable file. */
-	char *fn_copy;
-	fn_copy = palloc_get_page (0);
-	if (fn_copy == NULL)
-		return TID_ERROR;
-	strlcpy (fn_copy, file_name, PGSIZE);
+	int argc = 0;
+	char *argv[128];
+
+	argc = tokenize_input(file_name, argc, argv);
 
 	char *arg_ptr;
 
-	file = filesys_open (strtok_r(fn_copy, " ", &arg_ptr));
+	file = filesys_open (argv[0]);
 	if (file == NULL) {
-		printf ("load: %s: open failed\n", file_name);
+		printf ("load: %s: open failed\n", argv[0]);
 		goto done;
 	}
-	palloc_free_page(fn_copy);
 
 	t->run_file = file;
 	file_deny_write(file);
-
-	/*
-	ELF: 세 가지 섹션
-
-	* 헤더 (Header): ELF 파일의 기본 정보 및 파일의 레이아웃을 설명
-	* 프로그램 헤더 테이블 (Program Header Table): 실행 가능한 파일에서 프로그램의 로딩 
-												및 실행 정보를 제공
-	* 섹션 헤더 테이블 (Section Header Table): 파일에 포함된 섹션들의 정보를 나타냄*/
 
 	/* Read and verify executable header. */
 	if (file_read (file, &ehdr, sizeof ehdr) != sizeof ehdr
@@ -547,72 +537,35 @@ load (const char *file_name, struct intr_frame *if_) {
 	/* Start address. */
 	if_->rip = ehdr.e_entry;
 
-	/* TODO: Your code goes here.
-	 * TODO: Implement argument passing (see project2/argument_passing.html). */
-
-	 /*
-	 High Memory Addresses
-	---------------------
-	|       argv[n]      | <- (rsp + 8*n)
-	|       argv[n-1]    | <- (rsp + 8*(n-1))
-	|         ...        |
-	|       argv[1]      | <- (rsp + 8)
-	|       argv[0]      | <- (rsp)
-	|       argc         | <- (rsp - 8)
-	|   Return Address   | <- (rsp - 16)
-	| Saved Base Pointer | <- (rsp - 24)
-	---------------------
-	Low Memory Addresses
-	 */
+	/* Your code goes here.
+	 * Implement argument passing (see project2/argument_passing.html). */
 
 	ASSERT(if_->rsp == USER_STACK);
-	int argc = 0;
-	char *argv[128];
-
-	/*
-	rsp
-	1. input string array 저장
-	2. input string lifo로 stack에 저장 - len: string len
-	3. rsp 8배수 정렬
-	4. input string addr 저장 + 마지막 NULL까지
-	5. return address: (0) 저장 type: void *
-	*/
-
-	argc = tokenize_input(file_name, argc, argv);
 
 	for (int i=argc-1; i>=0; i--) {
 		if_->rsp -= strlen(argv[i]) + 1;
-		// printf("rsp addr: %p\n", if_->rsp);
-		strlcpy(if_->rsp, argv[i], strlen(argv[i])+1);
-		// printf("saved string: %s\n", if_->rsp);
+		memcpy(if_->rsp, argv[i], strlen(argv[i])+1);
 		argv[i] = if_->rsp;
 	}
 
 	round_stack_pt(if_);
 
-	// argv[argc] = NULL;
 	for (int i = argc; i >= 0; i--) {
 		if_->rsp -= sizeof(char *);
-		// printf("rsp addr: %p\n", if_->rsp);
 		if (i == argc) {
 			continue;
 		}
 		memcpy(if_->rsp, &(argv[i]), sizeof(char *));
-		// printf("saved str ptr: %p\n", (void *)(*((void **)(if_->rsp))));
 	}
 
 	if_->R.rsi = if_->rsp;
 	if_->R.rdi = argc;
 
-	void *null_ptr = NULL;
 	if_->rsp -= sizeof(void *);
-	// printf("rsp addr: %p\n", if_->rsp);
 	success = true;
 
 done:
 	/* We arrive here whether the load is successful or not. */
-	// 닫히면서 write deny가 풀림
-	// file_close (file);
 	return success;
 }
 
@@ -627,7 +580,7 @@ round_stack_pt(struct intr_frame *if_) {
 
 static int
 tokenize_input(const char *file_name, int argc, char **token_arr) {
-	char *file_name_copy = (char *)memset(file_name_copy, 0, strlen(file_name)+1);
+	char *file_name_copy = (char *)malloc(strlen(file_name)+1);
 
 	if (file_name_copy == NULL) {
 		return TID_ERROR;
@@ -856,7 +809,7 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
 
 		aux->file = file;
 		aux->ofs = ofs;
-		aux->read_bytes = read_bytes;
+		aux->read_bytes = page_read_bytes;
 		aux->writable = writable;
 
 		if (!vm_alloc_page_with_initializer (VM_ANON, upage,
@@ -864,13 +817,13 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
 						free(aux);
 						return false;
 					}
-			
 
 		/* Advance. */
+		struct thread *t = thread_current();
 		read_bytes -= page_read_bytes;
 		zero_bytes -= page_zero_bytes;
 		upage += PGSIZE;
-		ofs += page_read_bytes;
+		ofs += PGSIZE;
 	}
 	return true;
 }
@@ -886,10 +839,7 @@ setup_stack (struct intr_frame *if_) {
 	 * TODO: You should mark the page is stack. */
 	/* TODO: Your code goes here */
 	success = vm_alloc_page(VM_ANON, stack_bottom, true);
-    if (success) {
-        struct page *page = spt_find_page(&thread_current()->spt, stack_bottom);
-
-        if (vm_claim_page(stack_bottom))
+    if (success && vm_claim_page(stack_bottom)) {
             if_->rsp = USER_STACK;
     }
 

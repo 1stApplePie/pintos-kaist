@@ -541,6 +541,7 @@ init_thread (struct thread *t, const char *name, int priority) {
 	/* project 2 */
 	list_init(&t->child_process);
 	t->fd_table = NULL;
+	t->user_rsp = t->tf.rsp;
 }
 
 /* Chooses and returns the next thread to be scheduled.  Should

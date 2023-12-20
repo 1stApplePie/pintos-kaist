@@ -125,6 +125,9 @@ struct thread {
 	struct file **fd_table;
 	int fd_idx;
 
+	/* ************************ Project 2 ************************ */
+	uintptr_t user_rsp;
+
 #ifdef USERPROG
 	/* Owned by userprog/process.c. */
 	uint64_t *pml4;                     /* Page map level 4 */

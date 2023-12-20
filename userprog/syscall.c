@@ -61,8 +61,8 @@ syscall_init (void) {
 void
 syscall_handler (struct intr_frame *f UNUSED) {
 	// 유저 프로그램 실행 정보는 syscall_handler로 전달되는 intr_frame에 저장
-	// printf ("system call!\n");
-	// printf ("system call No.%d\n", f->R.rax);
+	thread_current()->user_rsp = f->rsp;
+
  	switch (f->R.rax) {
     case SYS_HALT:
 	{

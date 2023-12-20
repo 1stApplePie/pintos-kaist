@@ -6,6 +6,8 @@
 #include "vm/vm.h"
 #include "vm/inspect.h"
 
+#define LIMIT_STACK_SIZE 1 << 20
+
 /* Initializes the virtual memory subsystem by invoking each subsystem's
  * intialize codes. */
 void
@@ -62,7 +64,7 @@ static struct frame *vm_evict_frame (void);
 bool
 vm_alloc_page_with_initializer (enum vm_type type, void *upage, bool writable,
 		vm_initializer *init, void *aux) {
-
+	struct thread *t = thread_current();
 	ASSERT (VM_TYPE(type) != VM_UNINIT)
 
 	struct supplemental_page_table *spt = &thread_current ()->spt;
@@ -72,6 +74,7 @@ vm_alloc_page_with_initializer (enum vm_type type, void *upage, bool writable,
 		/* Create the page, fetch the initialier according to the VM type,
 		 * and then create "uninit" page struct by calling uninit_new. You
 		 * should modify the field after calling the uninit_new. */
+		
 		struct page *new_page = (struct page *)malloc(sizeof(struct page));
 		if (new_page == NULL)
             goto err;
@@ -106,11 +109,13 @@ err:
 /* Find VA from spt and return page. On error, return NULL. */
 struct page *
 spt_find_page (struct supplemental_page_table *spt, void *va) {
+	struct thread *t = thread_current();
 	struct page *page;
 	/* Find page in supplement page table - implemented project 3 */
 	struct hash_elem *e;
 
 	page->va =  pg_round_down(va);
+	struct thread *t_2 = thread_current();
 	e = hash_find (&spt->spt_ht, &page->page_elem);
 	return e != NULL ? hash_entry (e, struct page, page_elem) : NULL;
 }
@@ -163,8 +168,11 @@ vm_get_frame (void) {
 		exit(-1);
 	}
 
+	// args parsing에서 frame palloc이 안됨
+	// 왜?
 	void *kva = palloc_get_page(PAL_USER|PAL_ZERO);
 	if (kva == NULL) {
+		free(frame);
 		kva = vm_evict_frame();
 	}
 
@@ -178,7 +186,20 @@ vm_get_frame (void) {
 
 /* Growing the stack. */
 static void
-vm_stack_growth (void *addr UNUSED) {
+vm_stack_growth (void *addr) {
+	void *stack_bottom = pg_round_down(addr);
+	bool succ = false;
+
+	/* Check if stack size exceeds 1MB */
+	if (pg_ofs(addr) + PGSIZE > LIMIT_STACK_SIZE) {
+		printf("Stack size exceeds 1MB!\n");
+		exit(-1);
+	}
+
+	while (vm_alloc_page(VM_ANON, stack_bottom, true)) {
+		vm_claim_page(stack_bottom);
+		stack_bottom += PGSIZE;
+	}
 }
 
 /* Handle the fault on write_protected page */
@@ -188,10 +209,10 @@ vm_handle_wp (struct page *page UNUSED) {
 
 /* Return true on success */
 bool
-vm_try_handle_fault (struct intr_frame *f, void *addr, bool user, bool write, bool not_present) {
-	struct supplemental_page_table *spt = &thread_current ()->spt;
+vm_try_handle_fault (struct intr_frame *f UNUSED, void *addr, bool user, bool write, bool not_present) {
+	struct thread *curr = thread_current();
+	struct supplemental_page_table *spt = &curr->spt;
 	struct page *page = spt_find_page(spt, addr);
-
 	// Valid check
 	if (user == true && !is_user_vaddr(addr)) {
 		return false;
@@ -199,26 +220,32 @@ vm_try_handle_fault (struct intr_frame *f, void *addr, bool user, bool write, bo
 	else if (!not_present) {
 		return false;
 	}
-	// spt에 없는 page이면 어떻게 조치?
 	/*
-	페이지 테이블에도 없고, Supplement Page Table에도 없다면,
-	해당 페이지는 물리 메모리에 존재하지 않는 상태. 
-	운영 체제는 보통 디스크의 Backing Store 또는 스왑 영역에서 
-	해당 페이지의 데이터를 읽어와 물리 메모리에 로드.
+	user를 stack 공간이 user/kernel인지 구분하는 용도로 처음에 사용하였으나
+	user는 접근한 사용자를 나타냄
+	따라서 user가 아닌 addr로 user/kernel단을 구분해야함
 	*/
-	void *stack_bottom = pg_round_down(f->rsp) - PGSIZE;
+
+	/*  three cases of bogus page fault: 
+		lazy-loaded, swaped-out page, and write-protected page */
+
+	/* case 1: lazy loaded */
+	// if (page != NULL && not_present) {
+	// 	vm_stack_growth(addr); 
+	// 	return true;
+	// }
 
 	if (page == NULL) {
-		// TODO: Implement this function
-		bool succ = vm_alloc_page_with_initializer(VM_ANON, stack_bottom, true, NULL, NULL);
-
-        if (succ && vm_claim_page(addr)) {
-			f->rsp = pg_round_down(f->rsp);
+		if (addr < curr->user_rsp && write) {
+			vm_stack_growth(addr);
 			return true;
 		}
 		return false;
 	}
 
+	// process_exec, load에서 addr에 페이지가 존재하는 이유?
+	// uninit page를 초기화 할 때 spt에 넣어줌. 이는 lazy load떄문에 frame에 할당되어있지 않음
+	// 이제 do_claim_page의 swap_in에서 anon_initialize가 실행되야 함
 	return vm_do_claim_page (page);
 }
 
@@ -233,17 +260,19 @@ vm_dealloc_page (struct page *page) {
 /* Claim the page that allocate on VA. */
 bool
 vm_claim_page (void *va) {
-	struct page *page = NULL;
 	/* TODO: Fill this function */
-	page = spt_find_page(&thread_current()->spt, va);
-
-	return vm_do_claim_page (page);
+	struct page *page = spt_find_page(&thread_current()->spt, va);
+	return page != NULL ? vm_do_claim_page(page) : false;
 }
 
 /* Claim the PAGE and set up the mmu. */
+// 1. lazy load 방식에서 실제 페이지가 처음으로 사용될 때 va에 frame을 할당하는 함수
 static bool
 vm_do_claim_page (struct page *page) {
 	struct frame *frame = vm_get_frame ();
+	if (frame == NULL)
+		return false;
+		
 	struct thread *curr = thread_current();
 
 	/* Set links */
@@ -251,7 +280,16 @@ vm_do_claim_page (struct page *page) {
 	page->frame = frame;
 
 	/* Insert page table entry to map page's VA to frame's PA - implemented project 3 */
-	pml4_set_page(&curr->pml4, page->va, frame->kva, page->writable);
+	// pml4_set_page(&curr->pml4, page->va, frame->kva, page->writable);
+	// Error 1
+	if (pml4_set_page(curr->pml4, page->va, frame->kva, page->writable) == false)
+        return false;
+
+	// 프로세스가 특정 가상 주소에 접근하려고 시도하면 페이지 폴트가 발생합니다.
+	// 페이지 폴트 핸들러가 호출되고, 해당 페이지에 대한 정보를 찾아야 합니다.
+	// 만약 해당 페이지가 물리 메모리에 없고 스왑 영역에 저장되어 있다면, swap_in 함수가 호출되어 페이지를 물리 메모리로 가져옵니다.
+	// 가져온 페이지의 정보를 페이지 테이블에 업데이트하고, 프로세스는 해당 가상 주소에 접근할 수 있게 됩니다.
+
 
 	return swap_in (page, frame->kva);
 }
