@@ -32,8 +32,6 @@ typedef int tid_t;
 #define FDT_PAGES 2
 #define FDT_COUNT_LIMIT 128
 
-#define FDT_PAGES 2
-#define FDT_CNT_LIMIT 128
 
 /* A kernel thread or user process.
  *

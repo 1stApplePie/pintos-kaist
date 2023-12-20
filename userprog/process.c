@@ -482,7 +482,7 @@ load (const char *file_name, struct intr_frame *if_) {
 
 	/* TODO: Your code goes here.
 	 * TODO: Implement argument passing (see project2/argument_passing.html). */
-
+	// process_exec에 구현
 	success = true;
 
 done:
@@ -525,11 +525,11 @@ int process_add_fd(struct file *f){
 	struct thread *curr = thread_current();
 	struct file **fdt = curr->fdt;
 	
-	while(curr->next_fd<FDT_CNT_LIMIT && fdt[curr->next_fd]){
+	while(curr->next_fd<FDT_COUNT_LIMIT && fdt[curr->next_fd]){
 		curr->next_fd++;
 	}
 
-	if(curr->next_fd == FDT_CNT_LIMIT){
+	if(curr->next_fd == FDT_COUNT_LIMIT){
 		return -1;
 	}
 	
