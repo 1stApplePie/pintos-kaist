@@ -42,6 +42,19 @@ struct file {
 	bool deny_write;            /* Has file_deny_write() been called? */
 };
 
+static void
+check_address (void *addr) {
+	if(!is_user_vaddr(addr) || addr == NULL)
+		exit(-1);
+}
+
+static void
+check_pt(void *addr) {
+	if (pml4_get_page(thread_current()->pml4, addr) == NULL) {
+		exit(-1);
+	}
+}
+
 void
 syscall_init (void) {
 	write_msr(MSR_STAR, ((uint64_t)SEL_UCSEG - 0x10) << 48  |
@@ -96,18 +109,23 @@ syscall_handler (struct intr_frame *f UNUSED) {
 
     case SYS_CREATE:
 	{
+		check_address(f->R.rdi);
+		check_pt(f->R.rdi);
 		f->R.rax = create (f->R.rdi, f->R.rsi);
 		break;
 	}
 
 	case SYS_REMOVE:
 	{
+		check_address(f->R.rdi);
 		f->R.rax = remove (f->R.rdi);
 		break;
 	}
 
 	case SYS_OPEN:
 	{
+		check_address(f->R.rdi);
+		check_pt(f->R.rdi);
 		f->R.rax = open (f->R.rdi);
 		break;
 	}
@@ -120,6 +138,7 @@ syscall_handler (struct intr_frame *f UNUSED) {
 
 	case SYS_READ:
 	{
+		check_address (f->R.rsi);
 		f->R.rax = read (f->R.rdi, f->R.rsi, f->R.rdx);
         break;
 	}
@@ -240,6 +259,7 @@ wait (pid_t pid) {
 */
 bool
 create (const char *file, unsigned initial_size) {
+	
 	if (file == NULL || initial_size<0) {
 		exit(-1);
 	}

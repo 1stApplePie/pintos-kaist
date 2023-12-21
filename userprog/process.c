@@ -453,8 +453,6 @@ load (const char *file_name, struct intr_frame *if_) {
 
 	argc = tokenize_input(file_name, argc, argv);
 
-	char *arg_ptr;
-
 	file = filesys_open (argv[0]);
 	if (file == NULL) {
 		printf ("load: %s: open failed\n", argv[0]);
@@ -539,6 +537,7 @@ load (const char *file_name, struct intr_frame *if_) {
 
 	/* Your code goes here.
 	 * Implement argument passing (see project2/argument_passing.html). */
+	 
 
 	ASSERT(if_->rsp == USER_STACK);
 
