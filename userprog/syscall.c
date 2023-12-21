@@ -371,7 +371,8 @@ read (int fd, void *buffer, unsigned size) {
 */
 int
 write (int fd, const void *buffer, unsigned size) {
-	if (fd <= 0)
+	// Error - invalid fd
+	if (fd < 0 || fd > FD_MAX)
 		return NULL;
 	
 	sema_down(&mutex);

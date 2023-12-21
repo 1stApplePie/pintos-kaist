@@ -37,7 +37,7 @@ anon_initializer (struct page *page, enum vm_type type, void *kva) {
 	struct anon_page *anon_page = &page->anon;
 	anon_page->thread = thread_current();
 
-	// return true;
+	return true;
 }
 
 /* Swap in the page by read contents from the swap disk. */
@@ -57,4 +57,14 @@ anon_swap_out (struct page *page) {
 static void
 anon_destroy (struct page *page) {
 	struct anon_page *anon_page = &page->anon;
+	if (page->frame != NULL) {
+		// frame의 kva를 할당 해제하면 정보를 담고있는 pt가 미아가 된다?
+		// process_cleanup에서 spt해제 후에 pml4를 해제하면서 에러가 발생
+		// pte에 대한 destory는 pml4가 담당
+
+		// if (page->frame->kva != NULL) {
+		// 	palloc_free_page(page->frame->kva);
+		// }
+		free(page->frame);
+	}
 }

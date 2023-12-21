@@ -1,0 +1,8 @@
+# .gitignore
+
+.vscode/
+threads/build/
+*.o
+*.output
+*.result
+*.tests

@@ -76,7 +76,7 @@ vm_alloc_page_with_initializer (enum vm_type type, void *upage, bool writable,
 		
 		struct page *new_page = (struct page *)malloc(sizeof(struct page));
 		if (new_page == NULL)
-            goto err;
+            goto err;		
 
 		void *va = pg_round_down(upage);
 
@@ -353,23 +353,39 @@ supplemental_page_table_copy (struct supplemental_page_table *dst,
 	return true;
 }
 
+static void spt_destroy(struct hash_elem *e, void *aux UNUSED) {
+    const struct page *page = hash_entry(e, struct page, page_elem);
+	/* Write back modified contents to storage if necessary */
+	// if (page->operations->type == VM_FILE && page->operations->writeback) {
+	//     page->operations->writeback(page);
+	// }
+    vm_dealloc_page(page);
+}
+
 /* Free the resource hold by the supplemental page table */
 void
-supplemental_page_table_kill (struct supplemental_page_table *spt UNUSED) {
+supplemental_page_table_kill (struct supplemental_page_table *spt) {
 	/* TODO: Destroy all the supplemental_page_table hold by thread and
 	 * TODO: writeback all the modified contents to the storage. */
-	// struct hash_iterator i;
-	// hash_first(&i, &spt->spt_ht);
 
-	// while (hash_next(&i)) {
-	// 	struct page *page = hash_entry(hash_cur(&i), struct page, page_elem);
+	/*
+	hash destroy 사용 시 실패, hash clear 사용 시 성공
+	1. hash_destroy: 해시 테이블을 완전히 파괴하는 함수
+					이 함수를 호출하면 해시 테이블에 있는 모든 원소들이 제거되고, 
+					각 원소에 할당된 자원 해제 함수를 호출하여 자원을 해제합니다. 
+					그리고 해시 테이블 자체도 메모리에서 해제됩니다. 
+					이 함수는 해시 테이블을 초기 상태로 되돌리는 효과가 있습니다.
+	2. hash_clear: hash_clear 함수는 해시 테이블의 내용을 제거하지만, 
+					해시 테이블 자체는 남아있게 됩니다. 
+					각 원소에 할당된 자원 해제 함수를 호출하여 자원을 해제하고, 
+					원소들을 제거하여 해시 테이블을 비웁니다. 
+					하지만 해시 테이블 객체 자체는 남아있습니다. 
+					이 함수를 사용하면 해시 테이블은 여전히 사용 가능한 상태가 되며, 
+					나중에 다시 사용할 수 있습니다.
 
-	// 	/* Write back modified contents to storage if necessary */
-    //     if (page->operations->type == VM_FILE && page->operations->writeback) {
-    //         page->operations->writeback(page);
-    //     }
+	결국 우리가 원하는 작동은 process cleanup 후에 load하는 과정이므로 spt자체가 파괴되면 안된다.
+	*/
+	// hash_destroy(&spt->spt_ht, spt_destroy);
+	hash_clear(&spt->spt_ht, spt_destroy);
 
-	// 	destroy(page);
-	// }
-	// hash_destroy(&spt->spt_ht)
 }
