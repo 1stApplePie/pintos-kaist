@@ -78,9 +78,6 @@ struct page_operations {
 	bool (*swap_out) (struct page *);
 	void (*destroy) (struct page *);
 	enum vm_type type;
-
-	/* project3 implemention */
-	void (*writeback) (struct page *);
 };
 
 #define swap_in(page, v) (page)->operations->swap_in ((page), v)

@@ -127,7 +127,6 @@ struct thread {
 
 	/* ************************ Project 2 ************************ */
 	uintptr_t user_rsp;
-	uintptr_t stack_bottom;
 
 #ifdef USERPROG
 	/* Owned by userprog/process.c. */
