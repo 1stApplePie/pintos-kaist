@@ -537,7 +537,6 @@ load (const char *file_name, struct intr_frame *if_) {
 
 	/* Your code goes here.
 	 * Implement argument passing (see project2/argument_passing.html). */
-	 
 
 	ASSERT(if_->rsp == USER_STACK);
 
@@ -551,9 +550,9 @@ load (const char *file_name, struct intr_frame *if_) {
 
 	for (int i = argc; i >= 0; i--) {
 		if_->rsp -= sizeof(char *);
-		if (i == argc) {
-			continue;
-		}
+		// if (i == argc) {
+		// 	continue;
+		// }
 		memcpy(if_->rsp, &(argv[i]), sizeof(char *));
 	}
 

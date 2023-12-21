@@ -96,6 +96,7 @@ vm_alloc_page_with_initializer (enum vm_type type, void *upage, bool writable,
 
 		/* Insert the page into the spt. */
 		if (!spt_insert_page(spt, new_page)) {
+			free(new_page);
 			goto err;
 		}
 	}
@@ -185,17 +186,8 @@ vm_get_frame (void) {
 static void
 vm_stack_growth (void *addr) {
 	void *stack_bottom = pg_round_down(addr);
-	bool succ = false;
-
-	/* Check if stack size exceeds 1MB */
-	if (pg_ofs(addr) + PGSIZE > LIMIT_STACK_SIZE) {
-		printf("Stack size exceeds 1MB!\n");
-		exit(-1);
-	}
-
-	while (vm_alloc_page(VM_ANON, stack_bottom, true)) {
+	if (vm_alloc_page(VM_ANON, stack_bottom, true)) {
 		vm_claim_page(stack_bottom);
-		stack_bottom += PGSIZE;
 	}
 }
 
@@ -210,6 +202,10 @@ vm_try_handle_fault (struct intr_frame *f UNUSED, void *addr, bool user, bool wr
 	struct thread *curr = thread_current();
 	struct supplemental_page_table *spt = &curr->spt;
 	struct page *page = spt_find_page(spt, addr);
+	// Set rsp
+	if (user)
+		curr->user_rsp = curr->tf.rsp;
+
 	// Valid check
 	if (user == true && !is_user_vaddr(addr)) {
 		return false;
@@ -223,8 +219,9 @@ vm_try_handle_fault (struct intr_frame *f UNUSED, void *addr, bool user, bool wr
 	/* case 1: lazy loaded  - default*/
 
 	if (page == NULL) {
-		// stack bottom > addr > LIMIT_STACK_SIZE && user
-		if (pg_ofs(addr) + PGSIZE < LIMIT_STACK_SIZE && addr < curr->user_rsp && user) {
+		// stack bottom > addr > LIMIT_STACK_SIZE && user addr
+		if ((USER_STACK - (uintptr_t)addr) < LIMIT_STACK_SIZE && addr < curr->user_rsp 
+				&& is_user_vaddr(addr) && write) {
 			vm_stack_growth(addr);
 			return true;
 		}
