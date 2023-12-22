@@ -203,11 +203,12 @@ vm_try_handle_fault (struct intr_frame *f UNUSED, void *addr, bool user, bool wr
 	struct supplemental_page_table *spt = &curr->spt;
 	struct page *page = spt_find_page(spt, addr);
 	// Set rsp
-	if (user)
-		curr->user_rsp = curr->tf.rsp;
+	void *rsp = f->rsp;
+	if (!user)         
+		rsp = thread_current()->user_rsp;
 
 	// Valid check
-	if (user == true && !is_user_vaddr(addr)) {
+	if (is_kernel_vaddr(addr) || addr == NULL) {
 		return false;
 	}
 	else if (!not_present) {
@@ -220,8 +221,7 @@ vm_try_handle_fault (struct intr_frame *f UNUSED, void *addr, bool user, bool wr
 
 	if (page == NULL) {
 		// stack bottom > addr > LIMIT_STACK_SIZE && user addr
-		if ((USER_STACK - (uintptr_t)addr) < LIMIT_STACK_SIZE && addr < curr->user_rsp 
-				&& is_user_vaddr(addr) && write) {
+		if (USER_STACK - ((uintptr_t)rsp - 8) < LIMIT_STACK_SIZE && rsp-8 <= addr && addr < USER_STACK) {
 			vm_stack_growth(addr);
 			return true;
 		}

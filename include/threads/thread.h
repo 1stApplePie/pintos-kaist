@@ -126,7 +126,7 @@ struct thread {
 	int fd_idx;
 
 	/* ************************ Project 2 ************************ */
-	uintptr_t user_rsp;
+	void * user_rsp;
 
 #ifdef USERPROG
 	/* Owned by userprog/process.c. */
