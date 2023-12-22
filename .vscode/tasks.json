@@ -20,10 +20,17 @@
             ],
             "args": [
                 "--gdb",
+                "-v",
+                "-k",
+                "-m", "20",
+                "--fs-disk=10",
+                "-p", "tests/userprog/args-none:args-none",
+                // "-p", "tests/userprog/child-args:child-args",
+                "--swap-disk=4",
                 "--",
                 "-q",
-                "run",
-                "${input:test}"
+                "-f", "run",
+                "args-none"
             ],
             "options": {
                 "cwd": "${workspaceFolder}/${input:project}/build"
