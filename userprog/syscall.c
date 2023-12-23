@@ -172,6 +172,18 @@ syscall_handler (struct intr_frame *f UNUSED) {
 	case SYS_DUP2:
         break;
 
+	case SYS_MMAP:
+	{
+		f->R.rax = mmap(f->R.rdi, f->R.rsi, f->R.rdx, f->R.r10, f->R.r9);
+		break;
+	}
+
+	case SYS_MUNMAP:
+	{
+		munmap(f->R.rdi);
+		break;
+	}
+
     default:
         break;
 }
@@ -482,15 +494,40 @@ close (int fd) {
 // 	return syscall2 (SYS_DUP2, oldfd, newfd);
 // }
 
-// void *
-// mmap (void *addr, size_t length, int writable, int fd, off_t offset) {
-// 	return (void *) syscall5 (SYS_MMAP, addr, length, writable, fd, offset);
-// }
+void *
+mmap (void *addr, size_t length, int writable, int fd, off_t offset) {
+	struct thread *curr = thread_current();
+	struct file *file = curr->fd_table[fd];
 
-// void
-// munmap (void *addr) {
-// 	syscall1 (SYS_MUNMAP, addr);
-// }
+	// mmap may fail if the file opened as fd has a length of zero bytes.
+	if (file_length(file) == 0) {
+		return NULL;
+	}
+	
+	// It must fail if addr is not page-aligned or 
+	// if the range of pages mapped overlaps any existing set of mapped pages
+	if (addr != pg_round_down(addr) || spt_find_page(&curr->spt, pg_round_down(addr+length))) {
+		return NULL;
+	}
+
+	// if addr is 0, it must fail, because some Pintos code assumes virtual page 0 is not mapped
+	// mmap should also fail when length is zero.
+	if (addr == 0 || length == 0) {
+		return NULL;
+	}
+
+	// the file descriptors representing console input and output are not mappable.
+	if (fd == 0 || fd == 1) {
+		return NULL;
+	}
+	
+	return do_mmap(addr, length, writable, file, offset);
+}
+
+void
+munmap (void *addr) {
+	do_munmap(addr);
+}
 
 // bool
 // chdir (const char *dir) {
