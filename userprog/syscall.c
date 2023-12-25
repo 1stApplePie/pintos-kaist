@@ -425,10 +425,12 @@ write (int fd, const void *buffer, unsigned size) {
 		}
 		off_t res = file_write(opened_f, buffer, size);
 		sema_up(&mutex);
+
 		return res;
 	}
 
 	sema_up(&mutex);
+
 	return 0;
 }
 

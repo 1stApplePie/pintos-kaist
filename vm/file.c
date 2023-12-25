@@ -102,8 +102,8 @@ do_mmap (void *addr, size_t length, int writable,
 	// just like anonymous pages. 
 	// You can use vm_alloc_page_with_initializer or 
 	// vm_alloc_page to make a page object.
-	size_t read_bytes = length;
-	size_t zero_bytes = PGSIZE - (length % PGSIZE);
+	size_t read_bytes = file_length(reopen_file);
+	size_t zero_bytes = PGSIZE - (read_bytes % PGSIZE);
 	void *upage = addr;
 
 	while (read_bytes > 0 || zero_bytes > 0) {
@@ -132,7 +132,6 @@ do_mmap (void *addr, size_t length, int writable,
 					}
 
 		/* Advance. */
-		struct thread *t = thread_current();
 		read_bytes -= page_read_bytes;
 		zero_bytes -= page_zero_bytes;
 		upage += PGSIZE;
@@ -156,13 +155,15 @@ do_munmap (void *addr) {
 	uint32_t length = file_page->length;
 
 	while (write_bytes < length) {
-
         struct page *page = spt_find_page(&curr->spt, upage);
 		struct file_page *file_page = &page->file;
 
         if (pml4_is_dirty(curr->pml4, upage)) {
             file_seek(file_page->file, file_page->ofs);
             file_write(file_page->file, upage, file_page->read_bytes);
+		}
+		else {
+			break;
 		}
 
         hash_delete(&(curr->spt), &(page->page_elem));

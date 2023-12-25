@@ -339,6 +339,23 @@ supplemental_page_table_copy (struct supplemental_page_table *dst,
 				break;
 			}
 			case VM_FILE :{
+				// uninit이 아니면 claim할 필요가 없으므로 operation의 type으로 페이지 생성
+				vm_alloc_page(src_page->operations->type, src_page->va, src_page->writable);
+
+				// vm_alloc_page에서 할당받은 페이지는 pa정보가 없다
+				struct page *dst_page = spt_find_page(dst, src_page->va);
+				if (dst_page == NULL) {
+					return false;
+				}
+
+				// do_claim으로 dst_page에 물리 메모리를 할당
+				if (!vm_do_claim_page(dst_page)) {
+					return false;
+				}
+
+				// 처음 memcpy인자로 sizeof(void *)를 던졌는데,
+				// 여기서 사이즈는 물리 메모리의 사이즈를 의미
+				memcpy(dst_page->frame->kva, src_page->frame->kva, PGSIZE);
 				break;
 			}
 			default :
@@ -350,10 +367,6 @@ supplemental_page_table_copy (struct supplemental_page_table *dst,
 
 static void spt_destroy(struct hash_elem *e, void *aux UNUSED) {
     const struct page *page = hash_entry(e, struct page, page_elem);
-	/* Write back modified contents to storage if necessary */
-	// if (page->operations->type == VM_FILE && page->operations->writeback) {
-	//     page->operations->writeback(page);
-	// }
     vm_dealloc_page(page);
 }
 
@@ -366,7 +379,7 @@ supplemental_page_table_kill (struct supplemental_page_table *spt) {
 	/*
 	hash destroy 사용 시 실패, hash clear 사용 시 성공
 	1. hash_destroy: 해시 테이블을 완전히 파괴하는 함수
-					이 함수를 호출하면 해시 테이블에 있는 모든 원소들이 제거되고, 
+					이 함수를 호출하면 해시 테이블에 있는 모든 원소들이 제거되고,
 					각 원소에 할당된 자원 해제 함수를 호출하여 자원을 해제합니다. 
 					그리고 해시 테이블 자체도 메모리에서 해제됩니다. 
 					이 함수는 해시 테이블을 초기 상태로 되돌리는 효과가 있습니다.
