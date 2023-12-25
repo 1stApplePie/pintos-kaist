@@ -4,6 +4,13 @@
 #include "lib/kernel/hash.h"
 #include "threads/palloc.h"
 
+typedef struct loaded_file {
+	struct file* file;
+	uint32_t ofs;
+	uint32_t read_bytes;
+	uint32_t zero_bytes;
+};
+
 enum vm_type {
 	/* page not initialized */
 	VM_UNINIT = 0,

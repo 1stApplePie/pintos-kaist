@@ -169,8 +169,16 @@ vm_try_handle_fault (struct intr_frame *f UNUSED, void *addr UNUSED,
 	struct page *page = NULL;
 	/* TODO: Validate the fault */
 	/* TODO: Your code goes here */
-	page = spt_find_page(spt, addr);
-	return vm_do_claim_page (page);
+
+	// if(is_kernel_vaddr(addr)) return false;
+	// if(addr==NULL) return false;
+
+
+	// void* rsp = f->rsp;
+	// if(is_kernel_vaddr(rsp)) thread_current()->rsp_stack;
+	return vm_claim_page(addr);
+	// page = spt_find_page(spt, addr);
+	// return vm_do_claim_page (page);
 }
 
 /* Free the page.
@@ -233,8 +241,39 @@ bool
 supplemental_page_table_copy (
 	struct supplemental_page_table *dst UNUSED, 
 	struct supplemental_page_table *src UNUSED) {
-		hash_init(&dst->pages, page_hash, page_less, NULL);
-		memcpy(&dst->pages, &src->pages, hash_size(&dst->pages));
+	// 	hash_init(&dst->pages, page_hash, page_less, NULL);
+	// memcpy(&dst->pages, &src->pages, hash_size(&dst->pages));
+	struct hash_iterator i;
+    hash_first (&i, &src->pages);
+    while (hash_next (&i)) {
+        struct page *parent_page = hash_entry (hash_cur (&i), struct page, hash_elem);
+        enum vm_type type = page_get_type(parent_page); 
+        void *upage = parent_page->va;			 
+        bool writable = parent_page->writable;	 
+        vm_initializer *init = parent_page->uninit.init;	 
+        void* aux = parent_page->uninit.aux;
+
+        if(parent_page->operations->type == VM_UNINIT) {
+			vm_claim_page(upage);
+            if(!vm_alloc_page_with_initializer(type, upage, writable, init, aux)) // 부모의 타입, 부모의 페이지 va, 부모의 writable, 부모의 uninit.init, 부모의 aux (container)
+                return false;
+        }
+        else {
+            if(!vm_alloc_page(type, upage, writable))
+                return false;
+            if(!vm_claim_page(upage))
+                return false;
+			struct page* child_page = spt_find_page(dst, upage);
+            memcpy(child_page->frame->kva, parent_page->frame->kva, PGSIZE);
+        }
+    }
+    return true;
+}
+
+
+void spt_destroy_func(struct hash_elem* e, void* aux UNUSED){
+	struct page* page = hash_entry(e, struct page, hash_elem);
+	vm_dealloc_page(page);
 }
 
 /* Free the resource hold by the supplemental page table */
@@ -242,4 +281,6 @@ void
 supplemental_page_table_kill (struct supplemental_page_table *spt UNUSED) {
 	/* TODO: Destroy all the supplemental_page_table hold by thread and
 	 * TODO: writeback all the modified contents to the storage. */
+	// hash_destroy(&spt->pages, spt_destroy_func);
+	hash_clear(&spt->pages, spt_destroy_func);
 }

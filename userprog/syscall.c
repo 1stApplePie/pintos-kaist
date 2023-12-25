@@ -52,7 +52,7 @@ syscall_init (void) {
 }
 
 void check_address(void* addr){
-	if(addr==NULL || !is_user_vaddr(addr) || pml4_get_page(thread_current()->pml4,addr) == NULL)
+	if(addr==NULL || !is_user_vaddr(addr))
 		exit(-1);
 }
 

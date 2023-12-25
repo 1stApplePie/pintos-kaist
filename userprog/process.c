@@ -742,13 +742,6 @@ install_page (void *upage, void *kpage, bool writable) {
  * If you want to implement the function for only project 2, implement it on the
  * upper block. */
 
-typedef struct loaded_file {
-	struct file* file;
-	off_t ofs;
-	uint32_t read_bytes;
-	uint32_t zero_bytes;
-};
-
 static bool
 lazy_load_segment (struct page *page, void *aux) {
 	/* TODO: Load the segment from the file */
@@ -837,9 +830,9 @@ setup_stack (struct intr_frame *if_) {
 	/* TODO: Your code goes here */
 
 	if (vm_alloc_page(VM_ANON, stack_bottom, true)) {
-		if (vm_claim_page(stack_bottom)) {
+		if (success = vm_claim_page(stack_bottom)) {
 			if_->rsp = USER_STACK;
-			success = true;
+			thread_current()->stack_bottom = stack_bottom;
 		}
     }
 
