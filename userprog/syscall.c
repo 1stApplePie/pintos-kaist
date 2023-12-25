@@ -56,6 +56,12 @@ void check_address(void* addr){
 		exit(-1);
 }
 
+void check_page(void* addr){
+	if (pml4_get_page(thread_current()->pml4, addr) == NULL) {
+		exit(-1);
+	}
+}
+	
 void halt(void){
 	power_off();
 }
