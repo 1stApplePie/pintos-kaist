@@ -52,14 +52,14 @@ syscall_init (void) {
 }
 
 void check_address(void* addr){
-	if(addr==NULL || !is_user_vaddr(addr))
+	if(addr==NULL || !is_user_vaddr(addr) || pml4_get_page(thread_current()->pml4, addr) == NULL)
 		exit(-1);
 }
 
 void check_page(void* addr){
-	if (pml4_get_page(thread_current()->pml4, addr) == NULL) {
-		exit(-1);
-	}
+	// if (pml4_get_page(thread_current()->pml4, addr) == NULL) {
+	// 	exit(-1);
+	// }
 }
 	
 void halt(void){
