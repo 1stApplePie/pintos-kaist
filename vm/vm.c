@@ -76,7 +76,7 @@ vm_alloc_page_with_initializer (enum vm_type type, void *upage, bool writable,
 		
 		struct page *new_page = (struct page *)malloc(sizeof(struct page));
 		if (new_page == NULL)
-            goto err;		
+            goto err;
 
 		void *va = pg_round_down(upage);
 

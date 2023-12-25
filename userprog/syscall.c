@@ -517,7 +517,7 @@ mmap (void *addr, size_t length, int writable, int fd, off_t offset) {
 	}
 
 	// the file descriptors representing console input and output are not mappable.
-	if (fd == 0 || fd == 1) {
+	if (fd <= 1 || fd > FD_MAX) {
 		return NULL;
 	}
 	

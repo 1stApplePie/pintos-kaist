@@ -541,7 +541,12 @@ init_thread (struct thread *t, const char *name, int priority) {
 	/* project 2 */
 	list_init(&t->child_process);
 	t->fd_table = NULL;
+
+	#ifdef VM
+	/* project 3 */
 	t->user_rsp = NULL;
+	list_init(&t->mmap_info_list);
+	#endif
 }
 
 /* Chooses and returns the next thread to be scheduled.  Should
