@@ -174,7 +174,7 @@ syscall_handler (struct intr_frame *f UNUSED) {
 
 	case SYS_MMAP:
 	{
-		f->R.rax = mmap(f->R.rdi, f->R.rsi, f->R.rdx, f->R.r10, f->R.r9);
+		f->R.rax = mmap(f->R.rdi, f->R.rsi, f->R.rdx, f->R.r10, f->R.r8);
 		break;
 	}
 
@@ -502,7 +502,7 @@ mmap (void *addr, size_t length, int writable, int fd, off_t offset) {
 	struct file *file = curr->fd_table[fd];
 
 	// mmap may fail if the file opened as fd has a length of zero bytes.
-	if (file_length(file) == 0) {
+	if (file == NULL || file_length(file) == 0 || is_kernel_vaddr(addr)) {
 		return NULL;
 	}
 	
@@ -514,9 +514,14 @@ mmap (void *addr, size_t length, int writable, int fd, off_t offset) {
 
 	// if addr is 0, it must fail, because some Pintos code assumes virtual page 0 is not mapped
 	// mmap should also fail when length is zero.
-	if (addr == 0 || length == 0) {
+	if (addr == 0 || (long)length <= 0 || is_kernel_vaddr((size_t)addr + length)) {
 		return NULL;
 	}
+
+	// validate mmap over stack segment and offset value
+	if (offset != pg_round_down(offset) || file_length(file) <= offset || spt_find_page(&thread_current()->spt, addr)) {
+		return NULL;
+	}	
 
 	// the file descriptors representing console input and output are not mappable.
 	if (fd <= 1 || fd > FD_MAX) {

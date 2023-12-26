@@ -26,9 +26,7 @@ bool
 file_backed_initializer (struct page *page, enum vm_type type, void *kva) {
 	/* Set up the handler */
 	page->operations = &file_ops;
-
 	struct file_page *file_page = &page->file;
-
 	return true;
 }
 
@@ -48,10 +46,17 @@ file_backed_swap_out (struct page *page) {
 static void
 file_backed_destroy (struct page *page) {
 	struct file_page *file_page = &page->file;
+	struct thread *curr = thread_current();
+
+	if (pml4_is_dirty(curr->pml4, page->va)) {
+		file_write_at(file_page->file, page->va, file_page->read_bytes, file_page->ofs);
+		pml4_set_dirty(thread_current()->pml4, page->va, false);
+	}
+
 	if (page->frame != NULL) {
 		free(page->frame);
 	}
-	// file_close(file_page->file);
+
 }
 
 static bool
@@ -102,8 +107,8 @@ do_mmap (void *addr, size_t length, int writable,
 	// just like anonymous pages. 
 	// You can use vm_alloc_page_with_initializer or 
 	// vm_alloc_page to make a page object.
-	size_t read_bytes = file_length(reopen_file);
-	size_t zero_bytes = PGSIZE - (read_bytes % PGSIZE);
+	size_t read_bytes = file_length(reopen_file) < length ? file_length(reopen_file) : length;
+	size_t zero_bytes = file_length(reopen_file) < length ? pg_round_up(length) - file_length(reopen_file) : PGSIZE - (length % PGSIZE);
 	void *upage = addr;
 
 	while (read_bytes > 0 || zero_bytes > 0) {
@@ -149,29 +154,26 @@ do_munmap (void *addr) {
 	struct thread *curr = thread_current();
 	struct page *page = spt_find_page(&curr->spt, addr);
 	struct file_page *file_page = &page->file;
+	struct file *file = file_page->file;
 	void *upage = addr;
 
 	uint32_t write_bytes = 0;
 	uint32_t length = file_page->length;
 
 	while (write_bytes < length) {
-        struct page *page = spt_find_page(&curr->spt, upage);
-		struct file_page *file_page = &page->file;
+        struct page *m_page = spt_find_page(&curr->spt, upage);
+		struct file_page *m_file_page = &m_page->file;
 
         if (pml4_is_dirty(curr->pml4, upage)) {
-            file_seek(file_page->file, file_page->ofs);
-            file_write(file_page->file, upage, file_page->read_bytes);
-		}
-		else {
-			break;
+			file_write_at(m_file_page->file, upage, m_file_page->read_bytes, m_file_page->ofs);
 		}
 
-        hash_delete(&(curr->spt), &(page->page_elem));
-        spt_remove_page(&curr->spt, page);
-        vm_dealloc_page(page);
+        hash_delete(&(curr->spt), &(m_page->page_elem));
+        spt_remove_page(&curr->spt, m_page);
 
         upage += PGSIZE;
 		write_bytes += PGSIZE;
     }
-	file_close(file_page->file);
+
+	file_close(file);
 }
