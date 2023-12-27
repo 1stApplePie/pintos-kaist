@@ -4,7 +4,9 @@
 #include <debug.h>
 #include <list.h>
 #include <stdint.h>
+#include "filesys/file.h"
 #include "threads/interrupt.h"
+#include "threads/synch.h"
 #ifdef VM
 #include "vm/vm.h"
 #endif
@@ -41,7 +43,9 @@ typedef int tid_t;
  *           |                |                |
  *           |                |                |
  *           |                V                |
- *           |         grows downward          |
+ *           |         grows downward          |r
+
+ 
  *           |                                 |
  *           |                                 |
  *           |                                 |
@@ -91,9 +95,36 @@ struct thread {
 	enum thread_status status;          /* Thread state. */
 	char name[16];                      /* Name (for debugging purposes). */
 	int priority;                       /* Priority. */
+	int nice;							/* NICE */
 
 	/* Shared between thread.c and synch.c. */
 	struct list_elem elem;              /* List element. */
+
+	/* ************************ Project 1 ************************ */
+	int64_t wakeup_ticks;				/* Wake up Ticks */
+	struct lock *wait_on_lock;			/* Information about what thread wait for */
+	int origin_priority;				/* Old priority */
+	struct list donation;				/* Record donated int */
+	struct list_elem donation_elem; 	/* Donation element */
+	int recent_cpu;						/* Estimate of the CPU time the thread has used recently */
+
+	/* ************************ Project 2 ************************ */
+	struct list child_process;
+	struct list_elem child_elem;
+	struct thread *parent_process;
+
+	struct semaphore load_sema;
+	struct semaphore fork_sema;
+	struct semaphore wait_sema;
+	struct semaphore free_sema;
+
+	int exit_status;
+
+	struct file *run_file;
+
+	struct file **fd_table;
+	int fd_idx;
+	void * user_rsp;
 
 #ifdef USERPROG
 	/* Owned by userprog/process.c. */
@@ -102,6 +133,8 @@ struct thread {
 #ifdef VM
 	/* Table for whole virtual memory owned by thread. */
 	struct supplemental_page_table spt;
+	struct list mmap_info_list;
+	struct list fcfs_cache;
 #endif
 
 	/* Owned by thread.c. */
@@ -132,6 +165,8 @@ const char *thread_name (void);
 
 void thread_exit (void) NO_RETURN;
 void thread_yield (void);
+void thread_sleep (int64_t);
+void thread_wakeup (int64_t);
 
 int thread_get_priority (void);
 void thread_set_priority (int);
@@ -142,5 +177,18 @@ int thread_get_recent_cpu (void);
 int thread_get_load_avg (void);
 
 void do_iret (struct intr_frame *tf);
+
+/* ************************ Project 1 ************************ */
+typedef void thread_action_func (struct thread *t, void *aux);
+
+void try_yield(void);
+void donate_priority (void);
+void increase_recent_cpu(void);
+void refresh_recent_cpu(void);
+void refresh_load_avg(void);
+void refresh_priority(void);
+
+/* ************************ Project 2 ************************ */
+#define FD_MAX 128
 
 #endif /* threads/thread.h */

@@ -2,6 +2,7 @@
 #include <inttypes.h>
 #include <stdio.h>
 #include "userprog/gdt.h"
+#include "userprog/syscall.h"
 #include "threads/interrupt.h"
 #include "threads/thread.h"
 #include "intrinsic.h"
@@ -146,6 +147,8 @@ page_fault (struct intr_frame *f) {
 		return;
 #endif
 
+	exit(-1);
+	
 	/* Count page faults. */
 	page_fault_cnt++;
 

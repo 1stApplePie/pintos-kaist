@@ -329,7 +329,7 @@ pic_end_of_interrupt (int irq) {
    intr-stubs.S.  FRAME describes the interrupt and the
    interrupted thread's registers. */
 void
-intr_handler (struct intr_frame *frame) {
+ intr_handler (struct intr_frame *frame) {
 	bool external;
 	intr_handler_func *handler;
 
