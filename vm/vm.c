@@ -3,6 +3,7 @@
 #include "threads/malloc.h"
 #include "threads/vaddr.h"
 #include "threads/thread.h"
+#include "threads/mmu.h"
 #include "vm/vm.h"
 #include "vm/inspect.h"
 
@@ -140,7 +141,25 @@ static struct frame *
 vm_get_victim (void) {
 	struct frame *victim = NULL;
 	 /* TODO: The policy for eviction is up to you. */
+	struct thread *curr = thread_current();
+	struct list *fcfs_cache = &curr->fcfs_cache;
 
+	// for (struct list_elem *e = list_begin(fcfs_cache); e != list_end(fcfs_cache); e = list_next(e)) {
+	// 	struct frame *frame = list_entry(e, struct frame, fcfs_elem);
+	// 	struct page *page = frame->page;
+	// 	uint64_t *pte = pml4e_walk (curr->pml4, page->va, false);
+	// 	if (pte != NULL && (*pte & PTE_A) != 0) {
+	// 		list_remove(e);
+	// 		victim = frame;
+	// 		break;
+	// 	}
+	// }
+
+	// if (victim == NULL) {
+	if (!list_empty(fcfs_cache)) {
+		victim = list_entry(list_pop_front(fcfs_cache), struct frame, fcfs_elem);
+	}
+	// }
 	return victim;
 }
 
@@ -148,10 +167,11 @@ vm_get_victim (void) {
  * Return NULL on error.*/
 static struct frame *
 vm_evict_frame (void) {
-	struct frame *victim UNUSED = vm_get_victim ();
+	struct frame *victim = vm_get_victim ();
 	/* TODO: swap out the victim and return the evicted frame. */
+	swap_out(victim->page);
 
-	return NULL;
+	return victim;
 }
 
 /* palloc() and get frame. If there is no available page, evict the page
@@ -171,7 +191,7 @@ vm_get_frame (void) {
 	void *kva = palloc_get_page(PAL_USER);
 	if (kva == NULL) {
 		free(frame);
-		kva = vm_evict_frame();
+		return vm_evict_frame();
 	}
 
 	frame->kva = kva;
@@ -186,6 +206,7 @@ vm_get_frame (void) {
 static void
 vm_stack_growth (void *addr) {
 	void *stack_bottom = pg_round_down(addr);
+
 	if (vm_alloc_page(VM_ANON, stack_bottom, true)) {
 		vm_claim_page(stack_bottom);
 	}
@@ -242,6 +263,20 @@ vm_dealloc_page (struct page *page) {
 	free (page);
 }
 
+void
+update_lru_cache(struct list *fcfs_cache, struct list_elem *fcfs_elem) {
+	if (!list_empty (fcfs_cache)) {
+		for (struct list_elem *e = list_rbegin (fcfs_cache); e != list_rend (fcfs_cache); e = list_prev (e)) {
+			if (e == fcfs_elem) {
+				list_remove(e);
+				break;
+			}
+		}
+	}
+	// not in list or list emtpy
+	list_push_back(fcfs_cache, fcfs_elem);
+}
+
 /* Claim the page that allocate on VA. */
 bool
 vm_claim_page (void *va) {
@@ -264,14 +299,12 @@ vm_do_claim_page (struct page *page) {
 	frame->page = page;
 	page->frame = frame;
 
+	
 	/* Insert page table entry to map page's VA to frame's PA - implemented project 3 */
 	pml4_set_page(curr->pml4, page->va, frame->kva, page->writable);
-
-	// 프로세스가 특정 가상 주소에 접근하려고 시도하면 페이지 폴트가 발생합니다.
-	// 페이지 폴트 핸들러가 호출되고, 해당 페이지에 대한 정보를 찾아야 합니다.
-	// 만약 해당 페이지가 물리 메모리에 없고 스왑 영역에 저장되어 있다면, swap_in 함수가 호출되어 페이지를 물리 메모리로 가져옵니다.
-	// 가져온 페이지의 정보를 페이지 테이블에 업데이트하고, 프로세스는 해당 가상 주소에 접근할 수 있게 됩니다.
-
+	
+	list_push_back(&curr->fcfs_cache, &frame->fcfs_elem);
+	// update_lru_cache(&curr->fcfs_cache, &frame->fcfs_elem);
 
 	return swap_in (page, frame->kva);
 }
@@ -336,26 +369,25 @@ supplemental_page_table_copy (struct supplemental_page_table *dst,
 				// 처음 memcpy인자로 sizeof(void *)를 던졌는데,
 				// 여기서 사이즈는 물리 메모리의 사이즈를 의미
 				memcpy(dst_page->frame->kva, src_page->frame->kva, PGSIZE);
+
+				list_push_back(&thread_current()->fcfs_cache, &dst_page->frame->fcfs_elem);
 				break;
 			}
 			case VM_FILE :{
-				// uninit이 아니면 claim할 필요가 없으므로 operation의 type으로 페이지 생성
 				vm_alloc_page(src_page->operations->type, src_page->va, src_page->writable);
 
-				// vm_alloc_page에서 할당받은 페이지는 pa정보가 없다
 				struct page *dst_page = spt_find_page(dst, src_page->va);
 				if (dst_page == NULL) {
 					return false;
 				}
 
-				// do_claim으로 dst_page에 물리 메모리를 할당
 				if (!vm_do_claim_page(dst_page)) {
 					return false;
 				}
 
-				// 처음 memcpy인자로 sizeof(void *)를 던졌는데,
-				// 여기서 사이즈는 물리 메모리의 사이즈를 의미
 				memcpy(dst_page->frame->kva, src_page->frame->kva, PGSIZE);
+
+				list_push_back(&thread_current()->fcfs_cache, &dst_page->frame->fcfs_elem);
 				break;
 			}
 			default :
@@ -375,25 +407,5 @@ void
 supplemental_page_table_kill (struct supplemental_page_table *spt) {
 	/* TODO: Destroy all the supplemental_page_table hold by thread and
 	 * TODO: writeback all the modified contents to the storage. */
-
-	/*
-	hash destroy 사용 시 실패, hash clear 사용 시 성공
-	1. hash_destroy: 해시 테이블을 완전히 파괴하는 함수
-					이 함수를 호출하면 해시 테이블에 있는 모든 원소들이 제거되고,
-					각 원소에 할당된 자원 해제 함수를 호출하여 자원을 해제합니다. 
-					그리고 해시 테이블 자체도 메모리에서 해제됩니다. 
-					이 함수는 해시 테이블을 초기 상태로 되돌리는 효과가 있습니다.
-	2. hash_clear: hash_clear 함수는 해시 테이블의 내용을 제거하지만, 
-					해시 테이블 자체는 남아있게 됩니다. 
-					각 원소에 할당된 자원 해제 함수를 호출하여 자원을 해제하고, 
-					원소들을 제거하여 해시 테이블을 비웁니다. 
-					하지만 해시 테이블 객체 자체는 남아있습니다. 
-					이 함수를 사용하면 해시 테이블은 여전히 사용 가능한 상태가 되며, 
-					나중에 다시 사용할 수 있습니다.
-
-	결국 우리가 원하는 작동은 process cleanup 후에 load하는 과정이므로 spt자체가 파괴되면 안된다.
-	*/
-	// hash_destroy(&spt->spt_ht, spt_destroy);
 	hash_clear(&spt->spt_ht, spt_destroy);
-
 }

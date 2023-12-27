@@ -34,12 +34,30 @@ file_backed_initializer (struct page *page, enum vm_type type, void *kva) {
 static bool
 file_backed_swap_in (struct page *page, void *kva) {
 	struct file_page *file_page UNUSED = &page->file;
+	off_t res = file_read_at(file_page->file, kva, file_page->read_bytes, file_page->ofs);
+	if (res != file_page->read_bytes)
+        return false;
+	
+	memset(kva + file_page->read_bytes, 0, PGSIZE-(file_page->read_bytes));
+	return true;
 }
 
 /* Swap out the page by writeback contents to the file. */
 static bool
 file_backed_swap_out (struct page *page) {
 	struct file_page *file_page UNUSED = &page->file;
+	struct thread *curr = thread_current();
+
+    if (pml4_is_dirty(curr->pml4, page->va)) {
+		file_seek (file_page->file, file_page->ofs);
+		file_write (file_page->file, page->va, file_page->read_bytes);
+        // file_write_at(file_page->file, page->va, file_page->read_bytes, file_page->ofs);
+        pml4_set_dirty(curr->pml4, page->va, false);
+    }
+	pml4_clear_page(curr->pml4, page->va);
+	page->frame = NULL;
+
+	return true;
 }
 
 /* Destory the file backed page. PAGE will be freed by the caller. */
@@ -54,6 +72,7 @@ file_backed_destroy (struct page *page) {
 	}
 
 	if (page->frame != NULL) {
+		list_remove(&(page->frame->fcfs_elem));
 		free(page->frame);
 	}
 
@@ -108,7 +127,7 @@ do_mmap (void *addr, size_t length, int writable,
 	// You can use vm_alloc_page_with_initializer or 
 	// vm_alloc_page to make a page object.
 	size_t read_bytes = file_length(reopen_file) < length ? file_length(reopen_file) : length;
-	size_t zero_bytes = file_length(reopen_file) < length ? pg_round_up(length) - file_length(reopen_file) : PGSIZE - (length % PGSIZE);
+	size_t zero_bytes = file_length(reopen_file) < length ? PGSIZE - (file_length(reopen_file) % PGSIZE) : PGSIZE - (length % PGSIZE);
 	void *upage = addr;
 
 	while (read_bytes > 0 || zero_bytes > 0) {

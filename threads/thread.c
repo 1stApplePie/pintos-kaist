@@ -546,6 +546,7 @@ init_thread (struct thread *t, const char *name, int priority) {
 	/* project 3 */
 	t->user_rsp = NULL;
 	list_init(&t->mmap_info_list);
+	list_init(&t->fcfs_cache);
 	#endif
 }
 

@@ -1,8 +1,11 @@
 /* anon.c: Implementation of page for non-disk image (a.k.a. anonymous page). */
 
 #include "threads/malloc.h"
+#include "threads/vaddr.h"
 #include "vm/vm.h"
 #include "devices/disk.h"
+
+#include <bitmap.h>
 
 /* DO NOT MODIFY BELOW LINE */
 static struct disk *swap_disk;
@@ -18,12 +21,19 @@ static const struct page_operations anon_ops = {
 	.type = VM_ANON,
 };
 
+struct bitmap *swap_bitmap;
+
 /* Initialize the data for anonymous pages */
 void
 vm_anon_init (void) {
 	/* TODO: Set up the swap_disk. */
 	swap_disk = disk_get(1, 1);
-	// swap_disk = NULL;
+
+	if (swap_disk != NULL) {
+		// disk size는 sector 수를 반환, 각 sector는 512 byte sector임
+		// 우리는 4KB page를 할당해야 하므로, length = disk_size / 8 의 비트맵을 만들면 됨
+		swap_bitmap = bitmap_create (disk_size(swap_disk) / 8);
+	}
 }
 
 /* Initialize the file mapping */
@@ -44,6 +54,13 @@ anon_initializer (struct page *page, enum vm_type type, void *kva) {
 static bool
 anon_swap_in (struct page *page, void *kva) {
 	struct anon_page *anon_page = &page->anon;
+	size_t bitmap_idx = page->bitmap_idx;
+
+	for (int i = 0; i < 8; i++) {
+        disk_read(swap_disk, bitmap_idx*8+i, page->frame->kva + (i * DISK_SECTOR_SIZE));
+    }
+	bitmap_set(swap_bitmap, bitmap_idx, false);
+
 	return true;
 }
 
@@ -51,6 +68,22 @@ anon_swap_in (struct page *page, void *kva) {
 static bool
 anon_swap_out (struct page *page) {
 	struct anon_page *anon_page = &page->anon;
+	size_t bitmap_idx = bitmap_scan_and_flip(swap_bitmap, 0, 1, false);
+	if (bitmap_idx == BITMAP_ERROR)
+        return false;
+
+	page->bitmap_idx = bitmap_idx;
+	for (int i = 0; i < 8; i++) {
+        disk_write(swap_disk, bitmap_idx*8+i, page->frame->kva + (i * DISK_SECTOR_SIZE));
+    }
+	memset(page->frame->kva, 0, PGSIZE);
+
+	// page table update
+	pml4_clear_page(thread_current()->pml4, page->va);
+	pml4_set_dirty(anon_page->thread->pml4, page->va, false);
+    page->frame = NULL;
+	
+	return true;
 }
 
 /* Destroy the anonymous page. PAGE will be freed by the caller. */
@@ -58,13 +91,6 @@ static void
 anon_destroy (struct page *page) {
 	struct anon_page *anon_page = &page->anon;
 	if (page->frame != NULL) {
-		// frame의 kva를 할당 해제하면 정보를 담고있는 pt가 미아가 된다?
-		// process_cleanup에서 spt해제 후에 pml4를 해제하면서 에러가 발생
-		// pte에 대한 destory는 pml4가 담당
-
-		// if (page->frame->kva != NULL) {
-		// 	palloc_free_page(page->frame->kva);
-		// }
 		free(page->frame);
 	}
 }

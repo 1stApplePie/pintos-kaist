@@ -1,6 +1,7 @@
 #ifndef VM_VM_H
 #define VM_VM_H
 #include <hash.h>
+#include <list.h>
 #include <stdbool.h>
 
 #include "threads/palloc.h"
@@ -49,6 +50,7 @@ struct page {
 
 	/* Your implementation */
 	struct hash_elem page_elem; /* Hash table element. */
+	size_t bitmap_idx;
 	bool writable;
 
 	/* Per-type data are binded into the union.
@@ -67,6 +69,7 @@ struct page {
 struct frame {
 	void *kva;
 	struct page *page;
+	struct list_elem fcfs_elem;
 };
 
 /* The function table for page operations.
@@ -113,5 +116,4 @@ bool vm_alloc_page_with_initializer (enum vm_type type, void *upage,
 void vm_dealloc_page (struct page *page);
 bool vm_claim_page (void *va);
 enum vm_type page_get_type (struct page *page);
-
 #endif  /* VM_VM_H */

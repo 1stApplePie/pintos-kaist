@@ -27,6 +27,7 @@ test_main (void)
     /* Check that data is correct. */
     if (memcmp (actual, large, strlen (large)))
         fail ("read of mmap'd file reported bad data");
+    
 
     /* Verify that data is followed by zeros. */
     size_t len = strlen(large);

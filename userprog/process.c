@@ -36,7 +36,6 @@ static int tokenize_input(const char *, int, char **);
 static void
 process_init (void) {
 	struct thread *curr = thread_current ();
-	
 }
 
 /* Starts the first userland program, called "initd", loaded from FILE_NAME.
@@ -201,6 +200,7 @@ __do_fork (void *aux) {
 			current->fd_table[i] = NULL;
 		}
 	}
+
 	current->fd_idx = parent->fd_idx;
 
 	sema_up(&current->fork_sema);
@@ -458,9 +458,12 @@ load (const char *file_name, struct intr_frame *if_) {
 		printf ("load: %s: open failed\n", argv[0]);
 		goto done;
 	}
-
 	t->run_file = file;
 	file_deny_write(file);
+
+	#ifdef VM
+	list_init(&t->fcfs_cache);
+	#endif
 
 	/* Read and verify executable header. */
 	if (file_read (file, &ehdr, sizeof ehdr) != sizeof ehdr
@@ -757,9 +760,6 @@ lazy_load_segment (struct page *page, void *aux) {
 	// 이를 통해 메모리 사용을 최적화할 수 있다.
 	struct file_info *file_info = (struct file_info *)aux;
 
-	// 페이지 폴트가 발생하면 해당 페이지를 디스크에서 읽어와 
-	// 메모리에 로드하고, 페이지 테이블을 업데이트하여 
-	// 가상 주소와 물리 주소 간의 매핑을 수행
 	off_t res = file_read_at (file_info->file, page->va, 
 					file_info->read_bytes, file_info->ofs);
 	memset((char *)page->va + file_info->read_bytes, 0, PGSIZE-file_info->read_bytes);

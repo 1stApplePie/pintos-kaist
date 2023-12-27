@@ -124,8 +124,6 @@ struct thread {
 
 	struct file **fd_table;
 	int fd_idx;
-
-	/* ************************ Project 2 ************************ */
 	void * user_rsp;
 
 #ifdef USERPROG
@@ -136,6 +134,7 @@ struct thread {
 	/* Table for whole virtual memory owned by thread. */
 	struct supplemental_page_table spt;
 	struct list mmap_info_list;
+	struct list fcfs_cache;
 #endif
 
 	/* Owned by thread.c. */
