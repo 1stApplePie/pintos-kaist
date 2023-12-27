@@ -206,7 +206,6 @@ vm_get_frame (void) {
 static void
 vm_stack_growth (void *addr) {
 	void *stack_bottom = pg_round_down(addr);
-
 	if (vm_alloc_page(VM_ANON, stack_bottom, true)) {
 		vm_claim_page(stack_bottom);
 	}

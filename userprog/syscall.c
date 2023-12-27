@@ -360,6 +360,15 @@ read (int fd, void *buffer, unsigned size) {
 		
 	struct thread *curr = thread_current();
 	struct file* opened_f = curr->fd_table[fd];
+	struct page *page = spt_find_page(&curr->spt, pg_round_down(buffer));
+
+	if (!(buffer <= USER_STACK && buffer >= USER_STACK - (1 << 20))) {
+		if (page == NULL)
+			exit(-1);
+		
+		if (page->writable == false)
+			exit(-1);
+	}
 
 	sema_down(&mutex);
 	
