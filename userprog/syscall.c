@@ -111,7 +111,9 @@ syscall_handler (struct intr_frame *f UNUSED) {
 	{
 		check_address(f->R.rdi);
 		check_pt(f->R.rdi);
+		sema_down(&mutex);
 		f->R.rax = create (f->R.rdi, f->R.rsi);
+		sema_up(&mutex);
 		break;
 	}
 
@@ -220,7 +222,10 @@ exit (int status) {
 */
 pid_t
 fork (const char *thread_name, struct intr_frame *f){
-	return (pid_t)process_fork(thread_name, f);
+	sema_down(&mutex);
+	pid_t res = process_fork(thread_name, f);
+	sema_up(&mutex);
+	return res;
 }
 
 /*
@@ -309,8 +314,9 @@ open (const char *file) {
 	if (file == NULL) {
 		return -1;
 	}
-
+	sema_down(&mutex);
 	struct file* opened_f = filesys_open(file);
+	sema_up(&mutex);
 	if (opened_f == NULL) {
 		return -1;
 	}
@@ -484,7 +490,9 @@ close (int fd) {
 		return;
 	}
 	else {
+		// sema_down(&mutex);
 		file_close(file_obj);
+		// sema_up(&mutex);
 		curr->fd_table[fd] = NULL;
 	}
 }
@@ -535,43 +543,3 @@ void
 munmap (void *addr) {
 	do_munmap(addr);
 }
-
-// bool
-// chdir (const char *dir) {
-// 	return syscall1 (SYS_CHDIR, dir);
-// }
-
-// bool
-// mkdir (const char *dir) {
-// 	return syscall1 (SYS_MKDIR, dir);
-// }
-
-// bool
-// readdir (int fd, char name[READDIR_MAX_LEN + 1]) {
-// 	return syscall2 (SYS_READDIR, fd, name);
-// }
-
-// bool
-// isdir (int fd) {
-// 	return syscall1 (SYS_ISDIR, fd);
-// }
-
-// int
-// inumber (int fd) {
-// 	return syscall1 (SYS_INUMBER, fd);
-// }
-
-// int
-// symlink (const char* target, const char* linkpath) {
-// 	return syscall2 (SYS_SYMLINK, target, linkpath);
-// }
-
-// int
-// mount (const char *path, int chan_no, int dev_no) {
-// 	return syscall3 (SYS_MOUNT, path, chan_no, dev_no);
-// }
-
-// int
-// umount (const char *path) {
-// 	return syscall1 (SYS_UMOUNT, path);
-// }

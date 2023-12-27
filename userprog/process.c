@@ -32,6 +32,8 @@ static void __do_fork (void *);
 static void round_stack_pt(struct intr_frame *);
 static int tokenize_input(const char *, int, char **);
 
+extern struct lock mutex;
+
 /* General process initializer for initd and other process. */
 static void
 process_init (void) {
@@ -245,7 +247,9 @@ process_exec (void *f_name) {
 	process_cleanup ();
 
 	/* And then load the binary */
+	sema_down(&mutex);
 	success = load (file_name, &_if);
+	sema_up(&mutex);
 
 	sema_up(&(thread_current()->load_sema));
 
