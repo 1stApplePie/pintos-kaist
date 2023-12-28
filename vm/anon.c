@@ -37,8 +37,6 @@ vm_anon_init (void) {
 }
 
 /* Initialize the file mapping */
-// Anonymous 페이지의 경우에는 실제 파일이나 디스크에 매핑되는 것이 아니라, 
-// 메모리 내에서만 사용되는 페이지
 bool
 anon_initializer (struct page *page, enum vm_type type, void *kva) {
 	/* Set up the handler */
