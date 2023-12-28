@@ -65,9 +65,4 @@ uninit_destroy (struct page *page) {
 	struct uninit_page *uninit UNUSED = &page->uninit;
 	/* TODO: Fill this function.
 	 * TODO: If you don't have anything to do, just return. */
-	// if (page->operations->type == VM_UNINIT) {
-    //     /* Handle the destruction of the VM_UNINIT type page */
-    //     /* You may need to free any resources associated with the page */
-    //     free(page);
-	// }
 }

@@ -238,10 +238,7 @@ process_exec (void *f_name) {
 	// ds: 0x2c, es: 0x28, ss: 0x48, SEL_UDSEG: User Data Segment
 	_if.ds = _if.es = _if.ss = SEL_UDSEG;
 	_if.cs = SEL_UCSEG;	// cs: 0x3c, SEL_UCSEG: User Code Segment
-	// eflags: 0x40
-	// FLAG_IF: Interrupt Enable Flag, 해당 비트가 1로 설정되어 있으면 인터럽트가 활성화된 상태
-	// FLAG_MBS: Memory Barrier Shadow, 메모리 배리어 동작을 지시하는 데 사용
-	_if.eflags = FLAG_IF | FLAG_MBS; // 인터럽트를 활성화하고, 메모리 베리어 동작을 활성화
+	_if.eflags = FLAG_IF | FLAG_MBS;
 
 	/* We first kill the current context */
 	process_cleanup ();
@@ -260,7 +257,7 @@ process_exec (void *f_name) {
 		return -1;
 	}
 	/* Start switched process. */
-	do_iret (&_if);	// if에 arg에 관한 정보를 담았으므로, 해당 정보를 cpu에 올리는 작업
+	do_iret (&_if);
 	NOT_REACHED ();
 }
 
@@ -274,13 +271,6 @@ process_exec (void *f_name) {
  *
  * This function will be implemented in problem 2-2.  For now, it
  * does nothing. */
-
-/*
-exit & wait에선 두 종류의 wait가 필요하다.
-1. 먼저 parent가 child가 exit를 부를 때까지 기다리고
-2. child는 parent가 자신의 exit status를 받아줄 때까지 기다려야 한다.
--> syn test case
-*/
 int
 process_wait (tid_t child_tid UNUSED) {
 	/* XXX: Hint) The pintos exit if process_wait (initd), we recommend you
@@ -759,9 +749,6 @@ lazy_load_segment (struct page *page, void *aux) {
 	/* TODO: Load the segment from the file */
 	/* TODO: This called when the first page fault occurs on address VA. */
 	/* TODO: VA is available when calling this function. */
-	// Lazy load의 주요 특징은 필요한 시점에만 데이터를 로드하고,
-	// 그 이전까지는 디스크에서 읽어오지 않는다는 것
-	// 이를 통해 메모리 사용을 최적화할 수 있다.
 	struct file_info *file_info = (struct file_info *)aux;
 
 	off_t res = file_read_at (file_info->file, page->va, 

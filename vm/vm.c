@@ -144,22 +144,10 @@ vm_get_victim (void) {
 	struct thread *curr = thread_current();
 	struct list *fcfs_cache = &curr->fcfs_cache;
 
-	// for (struct list_elem *e = list_begin(fcfs_cache); e != list_end(fcfs_cache); e = list_next(e)) {
-	// 	struct frame *frame = list_entry(e, struct frame, fcfs_elem);
-	// 	struct page *page = frame->page;
-	// 	uint64_t *pte = pml4e_walk (curr->pml4, page->va, false);
-	// 	if (pte != NULL && (*pte & PTE_A) != 0) {
-	// 		list_remove(e);
-	// 		victim = frame;
-	// 		break;
-	// 	}
-	// }
-
-	// if (victim == NULL) {
 	if (!list_empty(fcfs_cache)) {
 		victim = list_entry(list_pop_front(fcfs_cache), struct frame, fcfs_elem);
 	}
-	// }
+	
 	return victim;
 }
 
@@ -247,10 +235,6 @@ vm_try_handle_fault (struct intr_frame *f UNUSED, void *addr, bool user, bool wr
 		}
 		return false;
 	}
-
-	// process_exec, load에서 addr에 페이지가 존재하는 이유?
-	// uninit page를 초기화 할 때 spt에 넣어줌. 이는 lazy load떄문에 frame에 할당되어있지 않음
-	// 이제 do_claim_page의 swap_in에서 anon_initialize가 실행되야 함
 	return vm_do_claim_page (page);
 }
 
@@ -285,7 +269,6 @@ vm_claim_page (void *va) {
 }
 
 /* Claim the PAGE and set up the mmu. */
-// 1. lazy load 방식에서 실제 페이지가 처음으로 사용될 때 va에 frame을 할당하는 함수
 static bool
 vm_do_claim_page (struct page *page) {
 	struct frame *frame = vm_get_frame ();
@@ -351,25 +334,18 @@ supplemental_page_table_copy (struct supplemental_page_table *dst,
 				break;
 			}
 			case VM_ANON :{
-				// uninit이 아니면 claim할 필요가 없으므로 operation의 type으로 페이지 생성
 				vm_alloc_page(src_page->operations->type, src_page->va, src_page->writable);
 
-				// vm_alloc_page에서 할당받은 페이지는 pa정보가 없다
 				struct page *dst_page = spt_find_page(dst, src_page->va);
 				if (dst_page == NULL) {
 					return false;
 				}
 
-				// do_claim으로 dst_page에 물리 메모리를 할당
 				if (!vm_do_claim_page(dst_page)) {
 					return false;
 				}
 
-				// 처음 memcpy인자로 sizeof(void *)를 던졌는데,
-				// 여기서 사이즈는 물리 메모리의 사이즈를 의미
 				memcpy(dst_page->frame->kva, src_page->frame->kva, PGSIZE);
-
-				list_push_back(&thread_current()->fcfs_cache, &dst_page->frame->fcfs_elem);
 				break;
 			}
 			case VM_FILE :{
